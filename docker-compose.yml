@@ -1,0 +1,39 @@
+# Lancement : docker compose up --build   →   https://localhost:8443
+# Créer un compte : docker compose run --rm dashboard python -m src.auth add <identifiant>
+services:
+  dashboard:
+    build: .
+    expose:
+      - "8501"                 # non publié sur l'hôte
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./data:/app/data       # cache, comptes et journal persistants
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/appuser
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2-alpine
+    depends_on:
+      - dashboard
+    ports:
+      - "8443:8443"
+    environment:
+      - UPSTREAM=dashboard:8501
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+volumes:
+  caddy_data:

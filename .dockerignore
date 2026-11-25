@@ -1,0 +1,12 @@
+.env
+data/
+.git/
+.github/
+.vscode/
+docs/
+tests/
+.zap/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
