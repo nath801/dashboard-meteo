@@ -21,10 +21,18 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt
-      - run: pytest -v
-
-  sast:
+      - run: pip install -r requirements.txt pytest-cov
+      - name: Tests + rapports (JUnit XML, couverture)
+        run: |
+          mkdir -p rapport-tests
+          pytest -v --junitxml=rapport-tests/junit.xml --cov=src --cov-report=term-missing \
+            --cov-report=xml:rapport-tests/couverture.xml | tee rapport-tests/pytest_resultats.txt
+          exit ${PIPESTATUS[0]}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rapport-tests
+          path: rapport-tests/
     name: Analyse statique (Bandit)
     runs-on: ubuntu-latest
     steps:

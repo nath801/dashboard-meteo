@@ -31,6 +31,8 @@ python -m src.auth add <identifiant>   # créer un compte (mot de passe saisi de
 streamlit run app.py              # http://localhost:8501
 python -m pytest -v               # tests unitaires
 ```
+Rapports de tests (41/41 réussis, couverture du code) : [docs/tests/](docs/tests/README.md).
+
 Dans VS Code : **F5** lance le dashboard (`.vscode/launch.json`), et les tâches « pytest » / « dashboard » sont disponibles.
 
 ## Architecture

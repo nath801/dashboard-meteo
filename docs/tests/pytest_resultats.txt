@@ -1,0 +1,64 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.2.0, pluggy-1.7.0 -- ~\AppData\Local\Programs\Python\Python312\python.exe
+rootdir: dashboard_meteo
+plugins: anyio-4.16.0, platformdirs-4.14.8, cov-7.1.0
+collecting ... collected 41 items
+
+tests/test_api.py::test_cache_set_and_get PASSED                         [  2%]
+tests/test_api.py::test_cache_expires_after_ttl PASSED                   [  4%]
+tests/test_api.py::test_fetch_uses_api_then_cache PASSED                 [  7%]
+tests/test_api.py::test_network_error_falls_back_to_mock PASSED          [  9%]
+tests/test_api.py::test_http_500_raises_api_error PASSED                 [ 12%]
+tests/test_api.py::test_corrupted_json_raises_api_error PASSED           [ 14%]
+tests/test_api.py::test_api_error_field_raises_api_error PASSED          [ 17%]
+tests/test_api.py::test_corrupted_cache_entry_is_ignored PASSED          [ 19%]
+tests/test_api.py::test_mock_data_has_api_format PASSED                  [ 21%]
+tests/test_auth.py::test_hash_is_salted_and_verifiable PASSED            [ 24%]
+tests/test_auth.py::test_malformed_hash_is_rejected PASSED               [ 26%]
+tests/test_auth.py::test_password_policy[court1-False] PASSED            [ 29%]
+tests/test_auth.py::test_password_policy[sanschiffres-False] PASSED      [ 31%]
+tests/test_auth.py::test_password_policy[1234567890-False] PASSED        [ 34%]
+tests/test_auth.py::test_password_policy[Password123-False] PASSED       [ 36%]
+tests/test_auth.py::test_password_policy[Gr4nit-Lune-58-True] PASSED     [ 39%]
+tests/test_auth.py::test_password_never_stored_in_clear PASSED           [ 41%]
+tests/test_auth.py::test_username_validation_and_duplicates PASSED       [ 43%]
+tests/test_auth.py::test_generic_message_for_unknown_user_and_bad_password PASSED [ 46%]
+tests/test_auth.py::test_account_lockout_then_unlock PASSED              [ 48%]
+tests/test_auth.py::test_ip_rate_limit_blocks_spraying PASSED            [ 51%]
+tests/test_auth.py::test_security_log_has_events_but_no_password PASSED  [ 53%]
+tests/test_processing.py::test_to_dataframe_merges_weather_and_air PASSED [ 56%]
+tests/test_processing.py::test_to_dataframe_handles_empty_input PASSED   [ 58%]
+tests/test_processing.py::test_interpolation_and_negative_values PASSED  [ 60%]
+tests/test_processing.py::test_comfort_score_ideal_and_bounds PASSED     [ 63%]
+tests/test_processing.py::test_stats_mean_and_median PASSED              [ 65%]
+tests/test_processing.py::test_trend_rising PASSED                       [ 68%]
+tests/test_processing.py::test_trend_stable PASSED                       [ 70%]
+tests/test_processing.py::test_latest_valid_skips_forecast_nan PASSED    [ 73%]
+tests/test_processing.py::test_no_alert_when_air_is_clean PASSED         [ 75%]
+tests/test_processing.py::test_no2_alert PASSED                          [ 78%]
+tests/test_processing.py::test_pm25_vigilance PASSED                     [ 80%]
+tests/test_processing.py::test_heatwave_alert_first PASSED               [ 82%]
+tests/test_processing.py::test_aqi_category[10-Bon] PASSED               [ 85%]
+tests/test_processing.py::test_aqi_category[75-Mod\xe9r\xe9] PASSED      [ 87%]
+tests/test_processing.py::test_aqi_category[120-Mauvais (sensibles)] PASSED [ 90%]
+tests/test_processing.py::test_aqi_category[180-Mauvais] PASSED          [ 92%]
+tests/test_processing.py::test_aqi_category[250-Tr\xe8s mauvais] PASSED  [ 95%]
+tests/test_processing.py::test_aqi_category[400-Dangereux] PASSED        [ 97%]
+tests/test_processing.py::test_aqi_category[None-Inconnu] PASSED         [100%]
+
+- generated xml file: dashboard_meteo\docs\tests\junit.xml -
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.12.10-final-0 _______________
+
+Name                     Stmts   Miss  Cover   Missing
+------------------------------------------------------
+src\__init__.py              0      0   100%
+src\alerts.py               57      5    91%   49, 52, 60, 65, 77
+src\api_client.py          141     30    79%   53-55, 61-62, 80-81, 85-86, 115, 133-134, 165-182, 189
+src\auth.py                193     36    81%   85, 129, 179-181, 192, 212-217, 262-286, 290
+src\config.py               40      3    92%   22-23, 31
+src\dashboard.py           227    227     0%   2-336
+src\data_processing.py      87     20    77%   64, 71, 113-129, 134-145
+------------------------------------------------------
+TOTAL                      745    321    57%
+============================= 41 passed in 9.35s ==============================
