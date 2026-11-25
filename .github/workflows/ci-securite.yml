@@ -60,9 +60,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Gitleaks en ligne de commande sur tout l'historique (l'action officielle échoue
+      # au premier push : elle analyse « premier_commit^..dernier » alors que le commit initial n'a pas de parent).
+      - name: Gitleaks (historique complet)
+        run: |
+          docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/repo" -w /repo             zricethezav/gitleaks:latest git . --redact --verbose --exit-code 1
 
   dast:
     name: Scan dynamique (OWASP ZAP via Caddy HTTPS)
