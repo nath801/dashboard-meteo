@@ -62,3 +62,16 @@ df = DataProcessor.to_dataframe(raw)
 print(client.last_source)                    # "api", "cache" ou "mock"
 print([a.message for a in AlertEngine.evaluate(df)])
 ```
+
+## Sécurité (après-midi)
+Lancement sécurisé : Streamlit n'écoute que sur `127.0.0.1:8501`, Caddy fournit le HTTPS et les en-têtes de sécurité.
+```powershell
+streamlit run app.py
+caddy run --config Caddyfile --adapter caddyfile     # → https://localhost:8443
+docker compose up --build                            # variante conteneurisée (non testée sur le poste)
+```
+- Inscription fermée par défaut (`ALLOW_SIGNUP=false`) : créer les comptes avec `python -m src.auth add <id>`.
+- Verrouillage du compte (5 échecs → 5 min), limite par IP (20 échecs / 15 min), journal `data/security.log`.
+- Audit complet (ZAP, Bandit, pip-audit, revue manuelle, 13 vulnérabilités corrigées) :
+  [docs/securite/RAPPORT_SECURITE.md](docs/securite/RAPPORT_SECURITE.md).
+- CI/CD : `.github/workflows/ci-securite.yml` (pytest, Bandit, pip-audit, Gitleaks, OWASP ZAP).
