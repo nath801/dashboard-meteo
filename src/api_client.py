@@ -201,12 +201,13 @@ def generate_mock_data(lat: float, lon: float, past_days: int = 7,
                        forecast_days: int = 2) -> Dict[str, Any]:
     """Génère des données déterministes (seed 42) au format exact des API Open-Meteo.
 
-    Les horodatages sont recalés sur l'heure actuelle (UTC) pour que le dashboard
+    Les horodatages sont recalés sur l'heure locale actuelle pour que le dashboard
     affiche un historique et des prévisions cohérents.
     """
     rng = np.random.default_rng(42)
-    start = dt.datetime.now(dt.timezone.utc).replace(minute=0, second=0, microsecond=0, tzinfo=None)
-    start = start.replace(hour=0) - dt.timedelta(days=past_days)
+    local = dt.datetime.now().astimezone()  # heure locale du poste (comme timezone=auto)
+    offset = int(local.utcoffset().total_seconds())
+    start = local.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None) - dt.timedelta(days=past_days)
     n = 24 * (past_days + forecast_days)
     times = [(start + dt.timedelta(hours=i)).strftime("%Y-%m-%dT%H:%M") for i in range(n)]
     hours = np.array([(start + dt.timedelta(hours=i)).hour for i in range(n)])
@@ -236,10 +237,10 @@ def generate_mock_data(lat: float, lon: float, past_days: int = 7,
     air_hourly["us_aqi"] = [int(min(200, max(10, 2.5 * p + 10))) for p in air_hourly["pm2_5"]]
     air_hourly["european_aqi"] = [int(min(150, max(5, 1.5 * v + 5))) for v in no2]
 
-    now_idx = 24 * past_days + dt.datetime.now(dt.timezone.utc).hour
+    now_idx = 24 * past_days + local.hour
     current_w = {k: v[now_idx] for k, v in weather_hourly.items() if k != "time"}
     current_a = {k: v[now_idx] for k, v in air_hourly.items() if k != "time"}
-    base = {"latitude": lat, "longitude": lon, "timezone": "GMT", "utc_offset_seconds": 0}
+    base = {"latitude": lat, "longitude": lon, "timezone": "local", "utc_offset_seconds": offset}
     return {
         "weather": {**base, "current": {"time": times[now_idx], **current_w}, "hourly": weather_hourly},
         "air_quality": {**base, "current": {"time": times[now_idx], **current_a}, "hourly": air_hourly},
