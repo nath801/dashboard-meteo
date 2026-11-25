@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.env
+data/*.db
+data/mock_response.json
+data/users.json
+data/*.tmp
+data/security.log
+.streamlit/secrets.toml
+docs/_tmp/

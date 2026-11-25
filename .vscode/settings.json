@@ -1,0 +1,7 @@
+{
+  "python.defaultInterpreterPath": "${env:LOCALAPPDATA}\Programs\Python\Python312\python.exe",
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests"],
+  "files.exclude": {"**/__pycache__": true, ".pytest_cache": true}
+}
