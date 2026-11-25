@@ -154,6 +154,11 @@ Le nombre d'alertes moyennes reste à 1, mais ce n'est plus la même : « CSP ab
 10036 Server, 10037 X-Powered-By, 10038 CSP, 10063 Permissions-Policy) : les correctifs deviennent des tests de
 non-régression. 10055 (unsafe-inline) est en WARN, les faux positifs/informatifs (10096, 10027, 10109, 10049) en IGNORE.
 
+**Exécution sur GitHub** (dépôt privé) : le premier pipeline a échoué sur le job Gitleaks sans secret trouvé —
+l'action `gitleaks-action` analyse `premier_commit^..dernier` et le commit initial n'a pas de parent. Gitleaks est
+maintenant lancé en ligne de commande sur tout l'historique (14 commits, aucune fuite). Le pipeline suivant est
+**vert sur les 5 jobs** (capture `docs/captures/10_ci_github.png`).
+
 ## 6. Commandes pour reproduire
 ```powershell
 python -m bandit -r src app.py
