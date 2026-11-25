@@ -141,5 +141,5 @@ class DataProcessor:
         if df.empty or not spec:
             return pd.DataFrame()
         d = df.resample("D").agg(**spec)
-        d.index = d.index.strftime("%d/%m/%Y")
+        d.index = pd.Index(d.index.strftime("%d/%m/%Y"), name="Jour")
         return d.round(1)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -13,6 +14,7 @@ import streamlit as st
 from src import config
 from src.alerts import AlertEngine, aqi_category
 from src.api_client import WeatherAPIClient, fetch_all_cities
+from src.auth import UserStore
 from src.data_processing import DataProcessor
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s : %(message)s")
@@ -54,10 +56,84 @@ def fmt(value: Any, pattern: str = "{:.1f}", unit: str = "") -> str:
     return pattern.format(value) + (f" {unit}" if unit else "")
 
 
+# --------------------------------------------------------------------- Authentification
+@st.cache_resource
+def get_user_store() -> UserStore:
+    """Magasin de comptes partagé (verrou commun entre les sessions)."""
+    return UserStore()
+
+
+def login_page() -> None:
+    """Page de connexion (et d'inscription si elle est autorisée)."""
+    store = get_user_store()
+    _, center, _ = st.columns([1, 1.2, 1])
+    with center:
+        st.markdown("<h2 style='text-align:center;white-space:nowrap'>🌤️ Dashboard Météo</h2>",
+                    unsafe_allow_html=True)  # texte fixe
+        st.markdown("<p style='text-align:center;color:#777'>Connectez-vous pour accéder au tableau de bord</p>",
+                    unsafe_allow_html=True)  # texte fixe
+        names = ["🔐 Connexion"] + (["📝 Créer un compte"] if config.ALLOW_SIGNUP else [])
+        tabs = st.tabs(names)
+        with tabs[0], st.form("login"):
+            username = st.text_input("Identifiant", max_chars=32, autocomplete="username")
+            password = st.text_input("Mot de passe", type="password", max_chars=128,
+                                     autocomplete="current-password")
+            if st.form_submit_button("Se connecter", type="primary", width="stretch"):
+                result = store.authenticate(username, password)
+                if result.ok:
+                    st.session_state["user"] = result.username
+                    st.session_state["last_activity"] = time.time()
+                    st.rerun()
+                else:
+                    st.error(result.message)
+        if config.ALLOW_SIGNUP:
+            with tabs[1], st.form("signup", clear_on_submit=False):
+                new_user = st.text_input("Identifiant", max_chars=32, autocomplete="username")
+                pwd1 = st.text_input("Mot de passe", type="password", max_chars=128,
+                                     autocomplete="new-password")
+                pwd2 = st.text_input("Confirmer le mot de passe", type="password", max_chars=128,
+                                     autocomplete="new-password")
+                st.caption("8 caractères minimum, avec au moins une lettre et un chiffre.")
+                if st.form_submit_button("Créer le compte", width="stretch"):
+                    if pwd1 != pwd2:
+                        st.error("Les mots de passe ne correspondent pas.")
+                    else:
+                        try:
+                            store.add_user(new_user, pwd1)
+                            st.success("Compte créé : vous pouvez vous connecter.")
+                        except ValueError as exc:
+                            st.error(str(exc))
+
+
+def logout(reason: str = "") -> None:
+    """Termine la session de l'utilisateur."""
+    for key in ("user", "last_activity"):
+        st.session_state.pop(key, None)
+    if reason:
+        st.session_state["logout_reason"] = reason
+
+
+def session_is_valid() -> bool:
+    """Vérifie la connexion et l'expiration après inactivité (met à jour l'horodatage)."""
+    if not st.session_state.get("user"):
+        return False
+    idle = time.time() - st.session_state.get("last_activity", 0)
+    if idle > config.SESSION_TIMEOUT_MINUTES * 60:
+        logout("Session expirée après inactivité : reconnectez-vous.")
+        return False
+    st.session_state["last_activity"] = time.time()
+    return True
+
+
 # --------------------------------------------------------------------- Barre latérale
 def sidebar(client: WeatherAPIClient) -> Dict[str, Any]:
     """Construit le panneau de sélection et renvoie les choix de l'utilisateur."""
     sb = st.sidebar
+    sb.markdown(f"👤 Connecté : **{st.session_state['user']}**")
+    if sb.button("🚪 Se déconnecter"):
+        logout()
+        st.rerun()
+    sb.divider()
     sb.header("⚙️ Configuration")
     choice = sb.selectbox("Ville", list(config.CITIES) + [OTHER_CITY])
     city: Optional[Dict[str, Any]]
@@ -239,4 +315,10 @@ def render_dashboard() -> None:
 def main() -> None:
     """Point d'entrée de l'application Streamlit."""
     st.set_page_config(page_title="Dashboard Météo & Qualité de l'Air", page_icon="🌤️", layout="wide")
+    if not session_is_valid():
+        reason = st.session_state.pop("logout_reason", None)
+        if reason:
+            st.info(reason)
+        login_page()
+        return
     render_dashboard()

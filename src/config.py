@@ -100,3 +100,10 @@ AQI_SCALE = [
     (300, "Très mauvais", "#8f3f97"),
     (float("inf"), "Dangereux", "#7e0023"),
 ]
+
+# --------------------------------------------------------------------- Authentification
+USERS_FILE: Path = Path(os.getenv("USERS_FILE", DATA_DIR / "users.json"))
+SESSION_TIMEOUT_MINUTES: int = _env_int("SESSION_TIMEOUT_MINUTES", 30)
+MAX_FAILED_ATTEMPTS: int = _env_int("MAX_FAILED_ATTEMPTS", 5)
+LOCKOUT_MINUTES: int = _env_int("LOCKOUT_MINUTES", 5)
+ALLOW_SIGNUP: bool = _env_bool("ALLOW_SIGNUP", True)  # inscription depuis la page de connexion
