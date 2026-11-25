@@ -60,6 +60,21 @@ de connexion ne protégeait donc rien. **Correctif** : inscription désactivée 
 dans `config.py`) ; l'administrateur crée les comptes avec `python -m src.auth add <identifiant>` (mot de passe
 saisi avec `getpass`). **Vérification** : test Playwright — l'onglet d'inscription n'est plus affiché.
 
+**Évolution — inscription en option avec captcha.** À la demande, la création de compte en ligne a été rendue
+disponible comme **option** (`ALLOW_SIGNUP=true` dans `.env`, toujours `false` par défaut). Elle est alors protégée par :
+- un **captcha image** (`src/captcha.py`, Pillow) généré sur le serveur : aucun service tiers (pas de reCAPTCHA :
+  pas de traçage des visiteurs ni d'exception à la CSP), seule l'empreinte SHA-256 de la réponse est gardée en session,
+  usage unique (une seule réponse possible par image) et expiration après 5 minutes ;
+- une **limite de 3 comptes par adresse IP et par heure** (événement `SIGNUP_BLOCKED_IP`) ;
+- la politique de mot de passe existante (V12) et le journal (`ACCOUNT_CREATED`, `CAPTCHA_FAILED`).
+Le captcha est aussi demandé **à la connexion après 3 échecs** (dans la session ou depuis la même IP), en complément
+du verrouillage du compte et de la limite par IP (V7).
+**Vérification** : 7 tests unitaires (`tests/test_captcha.py`) ; test Playwright en HTTPS via Caddy — mauvais captcha
+refusé, compte créé avec le bon captcha, captcha affiché après 3 échecs de connexion puis connexion réussie,
+0 violation CSP (compte de test supprimé ensuite).
+**Risque résiduel** : un captcha « maison » peut être lu par un logiciel d'OCR ; il freine les robots simples mais
+ne remplace pas la décision de fond : sur un service réel, l'inscription libre reste désactivée ou soumise à validation.
+
 ### V2 — Pas de HTTPS (Haute)
 **Risque** : identifiant et mot de passe circulent en clair (HTTP) et le cookie de session peut être intercepté.
 **Correctif** : reverse proxy Caddy sur `https://localhost:8443` (`tls internal`) + HSTS 1 an.

@@ -111,5 +111,10 @@ ALLOW_SIGNUP: bool = _env_bool("ALLOW_SIGNUP", False)
 # Limite par adresse IP contre le « password spraying » (V7).
 IP_MAX_FAILURES: int = _env_int("IP_MAX_FAILURES", 20)
 IP_WINDOW_MINUTES: int = _env_int("IP_WINDOW_MINUTES", 15)
+# Captcha : toujours demandé à l'inscription, et à la connexion après N échecs (session ou IP).
+CAPTCHA_AFTER_FAILURES: int = _env_int("CAPTCHA_AFTER_FAILURES", 3)
+CAPTCHA_TTL_SECONDS: int = _env_int("CAPTCHA_TTL_SECONDS", 300)
+# Nombre maximal de comptes créés par adresse IP et par heure (inscription en ligne).
+SIGNUP_MAX_PER_HOUR: int = _env_int("SIGNUP_MAX_PER_HOUR", 3)
 # Journal des événements de sécurité (V8).
 SECURITY_LOG: Path = Path(os.getenv("SECURITY_LOG", DATA_DIR / "security.log"))

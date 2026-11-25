@@ -14,7 +14,8 @@ import streamlit as st
 from src import config
 from src.alerts import AlertEngine, aqi_category
 from src.api_client import WeatherAPIClient, fetch_all_cities
-from src.auth import UserStore, security_event
+from src.auth import IPRateLimiter, UserStore, security_event
+from src.captcha import Captcha
 from src.data_processing import DataProcessor
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s : %(message)s")
@@ -74,9 +75,52 @@ def client_ip() -> str:
         return "-"
 
 
+@st.cache_resource
+def get_signup_limiter() -> IPRateLimiter:
+    """Compteur partagé des comptes créés par IP sur une heure (anti-création en masse)."""
+    return IPRateLimiter(max_failures=config.SIGNUP_MAX_PER_HOUR, window_minutes=60)
+
+
+def _captcha(key: str) -> Captcha:
+    """Captcha courant de la session pour ce formulaire (recréé s'il a été utilisé ou a expiré)."""
+    current = st.session_state.get(key)
+    if current is None or current.used or time.time() > current.expires_at:
+        current = st.session_state[key] = Captcha.new()
+        st.session_state.pop(f"{key}_answer", None)  # vide la saisie de l'ancienne image
+    return current
+
+
+def _captcha_field(key: str) -> str:
+    """Affiche l'image du captcha et le champ de saisie (à appeler dans un st.form)."""
+    st.image(_captcha(key).image, width=220)
+    return st.text_input("Recopiez les caractères de l'image", max_chars=8, autocomplete="off",
+                         key=f"{key}_answer", help="Majuscules ou minuscules, sans importance.")
+
+
+def _check_captcha(key: str, answer: str, form: str) -> bool:
+    """Vérifie le captcha (usage unique) et journalise l'échec."""
+    if _captcha(key).verify(answer):
+        return True
+    security_event("CAPTCHA_FAILED", "-", client_ip(), form=form)
+    return False
+
+
+def _flash(form: str, kind: str, message: str) -> None:
+    """Mémorise un message à afficher dans l'onglet ``form`` après le rechargement de la page."""
+    st.session_state[f"flash_{form}"] = (kind, message)
+    st.rerun()  # nouvelle image de captcha + message
+
+
+def _show_flash(form: str) -> None:
+    flash = st.session_state.pop(f"flash_{form}", None)
+    if flash:
+        getattr(st, flash[0])(flash[1])
+
+
 def login_page() -> None:
-    """Page de connexion (et d'inscription si elle est autorisée)."""
+    """Page de connexion, et de création de compte si elle est autorisée (ALLOW_SIGNUP)."""
     store = get_user_store()
+    ip = client_ip()
     _, center, _ = st.columns([1, 1.2, 1])
     with center:
         st.markdown("<h2 style='text-align:center;white-space:nowrap'>🌤️ Dashboard Météo</h2>",
@@ -85,35 +129,62 @@ def login_page() -> None:
                     unsafe_allow_html=True)  # texte fixe
         names = ["🔐 Connexion"] + (["📝 Créer un compte"] if config.ALLOW_SIGNUP else [])
         tabs = st.tabs(names)
+
+        # Captcha à la connexion après plusieurs échecs (dans la session ou depuis cette IP).
+        need_captcha = max(st.session_state.get("login_failures", 0),
+                           store.ip_limiter.count(ip)) >= config.CAPTCHA_AFTER_FAILURES
+        with tabs[0]:
+            _show_flash("login")
         with tabs[0], st.form("login"):
             username = st.text_input("Identifiant", max_chars=32, autocomplete="username")
             password = st.text_input("Mot de passe", type="password", max_chars=128,
                                      autocomplete="current-password")
+            answer = _captcha_field("captcha_login") if need_captcha else ""
             if st.form_submit_button("Se connecter", type="primary", width="stretch"):
-                result = store.authenticate(username, password, client_ip())
+                if need_captcha and not _check_captcha("captcha_login", answer, "login"):
+                    _flash("login", "error", "Captcha incorrect ou expiré : recopiez la nouvelle image.")
+                result = store.authenticate(username, password, ip)
                 if result.ok:
+                    st.session_state.pop("login_failures", None)
                     st.session_state["user"] = result.username
                     st.session_state["last_activity"] = time.time()
                     st.rerun()
-                else:
-                    st.error(result.message)
+                st.session_state["login_failures"] = st.session_state.get("login_failures", 0) + 1
+                _flash("login", "error", result.message)
+
         if config.ALLOW_SIGNUP:
-            with tabs[1], st.form("signup", clear_on_submit=False):
-                new_user = st.text_input("Identifiant", max_chars=32, autocomplete="username")
-                pwd1 = st.text_input("Mot de passe", type="password", max_chars=128,
-                                     autocomplete="new-password")
-                pwd2 = st.text_input("Confirmer le mot de passe", type="password", max_chars=128,
-                                     autocomplete="new-password")
-                st.caption("8 caractères minimum, au moins une lettre et un chiffre, pas de mot de passe courant.")
-                if st.form_submit_button("Créer le compte", width="stretch"):
-                    if pwd1 != pwd2:
-                        st.error("Les mots de passe ne correspondent pas.")
-                    else:
+            with tabs[1]:
+                _show_flash("signup")
+                with st.form("signup", clear_on_submit=False):
+                    new_user = st.text_input("Identifiant", max_chars=32, autocomplete="username",
+                                             key="signup_user")
+                    pwd1 = st.text_input("Mot de passe", type="password", max_chars=128,
+                                         autocomplete="new-password", key="signup_pwd1")
+                    pwd2 = st.text_input("Confirmer le mot de passe", type="password", max_chars=128,
+                                         autocomplete="new-password", key="signup_pwd2")
+                    st.caption("3 à 32 caractères (lettres, chiffres, . _ -) pour l'identifiant. "
+                               "Mot de passe : 8 caractères minimum, au moins une lettre et un chiffre, "
+                               "pas de mot de passe courant.")
+                    answer = _captcha_field("captcha_signup")
+                    if st.form_submit_button("Créer le compte", width="stretch"):
+                        limiter = get_signup_limiter()
+                        if limiter.is_blocked(ip):
+                            security_event("SIGNUP_BLOCKED_IP", new_user, ip)
+                            _flash("signup", "error", "Trop de comptes créés depuis cette adresse. Réessayez plus tard.")
+                        if not _check_captcha("captcha_signup", answer, "signup"):
+                            _flash("signup", "error", "Captcha incorrect ou expiré : recopiez la nouvelle image.")
+                        if pwd1 != pwd2:
+                            _flash("signup", "error", "Les mots de passe ne correspondent pas.")
                         try:
-                            store.add_user(new_user, pwd1, client_ip())
-                            st.success("Compte créé : vous pouvez vous connecter.")
+                            store.add_user(new_user, pwd1, ip)
                         except ValueError as exc:
-                            st.error(str(exc))
+                            _flash("signup", "error", str(exc))
+                        limiter.record_failure(ip)  # compte une création pour cette IP
+                        _flash("signup", "success",
+                               f"Compte « {new_user.strip().lower()} » créé : connectez-vous dans l'onglet Connexion.")
+                if st.button("🔄 Autre image", key="captcha_refresh"):
+                    st.session_state.pop("captcha_signup", None)
+                    st.rerun()
 
 
 def logout(reason: str = "") -> None:

@@ -73,6 +73,9 @@ caddy run --config Caddyfile --adapter caddyfile     # → https://localhost:844
 docker compose up --build                            # variante conteneurisée (non testée sur le poste)
 ```
 - Inscription fermée par défaut (`ALLOW_SIGNUP=false`) : créer les comptes avec `python -m src.auth add <id>`.
+- Option de création de compte en ligne : `ALLOW_SIGNUP=true` dans `.env` → onglet « Créer un compte »
+  protégé par un **captcha** image (généré localement, usage unique, 5 min) et limité à 3 comptes par IP et par heure.
+  Le captcha est aussi demandé à la connexion après 3 échecs (session ou IP).
 - Verrouillage du compte (5 échecs → 5 min), limite par IP (20 échecs / 15 min), journal `data/security.log`.
 - Audit complet (ZAP, Bandit, pip-audit, revue manuelle, 13 vulnérabilités corrigées) :
   [docs/securite/RAPPORT_SECURITE.md](docs/securite/RAPPORT_SECURITE.md).

@@ -134,6 +134,11 @@ class IPRateLimiter:
         with self._lock:
             return len(self._purge(ip, time.time())) >= self.max_failures
 
+    def count(self, ip: str) -> int:
+        """Nombre d'événements enregistrés pour cette IP dans la fenêtre."""
+        with self._lock:
+            return len(self._purge(ip, time.time()))
+
     def record_failure(self, ip: str) -> None:
         """Enregistre un échec de connexion pour cette IP."""
         with self._lock:
