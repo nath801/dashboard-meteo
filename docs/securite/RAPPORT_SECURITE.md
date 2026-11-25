@@ -85,7 +85,7 @@ acceptait n'importe quel en-tête Host (DNS rebinding). **Correctif** (`.streaml
 **Risque** : sans `.dockerignore`, `.env`, `data/users.json` et `.git` seraient copiés dans l'image ; un processus
 root compromis a plus de pouvoir. **Correctif** : `.dockerignore`, `useradd --uid 10001 appuser`, `USER appuser`,
 `read_only`, `tmpfs`, `no-new-privileges`, `cap_drop: [ALL]`, Streamlit non publié (seul Caddy expose 8443).
-**Vérification** : relecture. **Le build n'a pas pu être testé** : le moteur Docker ne démarrait pas sur le poste.
+**Vérification** : relecture. **Le build n'a pas pu être testé** : Docker Desktop refuse de démarrer car le compte Windows n'est pas membre du groupe `docker-users` (ajout réservé à un administrateur).
 
 ### V7 — Pas de limite par IP (Moyenne)
 **Risque** : le verrouillage par compte n'empêche pas d'essayer un mot de passe courant sur de nombreux comptes
