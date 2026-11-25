@@ -33,6 +33,8 @@ jobs:
         with:
           name: rapport-tests
           path: rapport-tests/
+
+  sast:
     name: Analyse statique (Bandit)
     runs-on: ubuntu-latest
     steps:
