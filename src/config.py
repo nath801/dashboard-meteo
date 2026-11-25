@@ -106,4 +106,10 @@ USERS_FILE: Path = Path(os.getenv("USERS_FILE", DATA_DIR / "users.json"))
 SESSION_TIMEOUT_MINUTES: int = _env_int("SESSION_TIMEOUT_MINUTES", 30)
 MAX_FAILED_ATTEMPTS: int = _env_int("MAX_FAILED_ATTEMPTS", 5)
 LOCKOUT_MINUTES: int = _env_int("LOCKOUT_MINUTES", 5)
-ALLOW_SIGNUP: bool = _env_bool("ALLOW_SIGNUP", True)  # inscription depuis la page de connexion
+# Inscription libre désactivée par défaut (V1) : les comptes sont créés par l'administrateur (CLI).
+ALLOW_SIGNUP: bool = _env_bool("ALLOW_SIGNUP", False)
+# Limite par adresse IP contre le « password spraying » (V7).
+IP_MAX_FAILURES: int = _env_int("IP_MAX_FAILURES", 20)
+IP_WINDOW_MINUTES: int = _env_int("IP_WINDOW_MINUTES", 15)
+# Journal des événements de sécurité (V8).
+SECURITY_LOG: Path = Path(os.getenv("SECURITY_LOG", DATA_DIR / "security.log"))

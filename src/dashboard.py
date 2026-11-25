@@ -14,7 +14,7 @@ import streamlit as st
 from src import config
 from src.alerts import AlertEngine, aqi_category
 from src.api_client import WeatherAPIClient, fetch_all_cities
-from src.auth import UserStore
+from src.auth import UserStore, security_event
 from src.data_processing import DataProcessor
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s : %(message)s")
@@ -63,6 +63,17 @@ def get_user_store() -> UserStore:
     return UserStore()
 
 
+def client_ip() -> str:
+    """IP du visiteur : dernière valeur de X-Forwarded-For (posée par Caddy), sinon IP directe."""
+    try:
+        forwarded = st.context.headers.get("X-Forwarded-For", "")
+        if forwarded:
+            return forwarded.split(",")[-1].strip()[:45]
+        return st.context.ip_address or "-"
+    except Exception:  # contexte indisponible (tests, exécution hors Streamlit)
+        return "-"
+
+
 def login_page() -> None:
     """Page de connexion (et d'inscription si elle est autorisée)."""
     store = get_user_store()
@@ -79,7 +90,7 @@ def login_page() -> None:
             password = st.text_input("Mot de passe", type="password", max_chars=128,
                                      autocomplete="current-password")
             if st.form_submit_button("Se connecter", type="primary", width="stretch"):
-                result = store.authenticate(username, password)
+                result = store.authenticate(username, password, client_ip())
                 if result.ok:
                     st.session_state["user"] = result.username
                     st.session_state["last_activity"] = time.time()
@@ -93,20 +104,21 @@ def login_page() -> None:
                                      autocomplete="new-password")
                 pwd2 = st.text_input("Confirmer le mot de passe", type="password", max_chars=128,
                                      autocomplete="new-password")
-                st.caption("8 caractères minimum, avec au moins une lettre et un chiffre.")
+                st.caption("8 caractères minimum, au moins une lettre et un chiffre, pas de mot de passe courant.")
                 if st.form_submit_button("Créer le compte", width="stretch"):
                     if pwd1 != pwd2:
                         st.error("Les mots de passe ne correspondent pas.")
                     else:
                         try:
-                            store.add_user(new_user, pwd1)
+                            store.add_user(new_user, pwd1, client_ip())
                             st.success("Compte créé : vous pouvez vous connecter.")
                         except ValueError as exc:
                             st.error(str(exc))
 
 
 def logout(reason: str = "") -> None:
-    """Termine la session de l'utilisateur."""
+    """Termine la session de l'utilisateur et journalise l'événement."""
+    security_event("SESSION_EXPIRED" if reason else "LOGOUT", st.session_state.get("user", "-"), client_ip())
     for key in ("user", "last_activity"):
         st.session_state.pop(key, None)
     if reason:

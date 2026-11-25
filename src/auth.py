@@ -18,9 +18,10 @@ import secrets
 import sys
 import threading
 import time
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Deque, Dict, Optional
 
 from src import config
 
@@ -32,6 +33,15 @@ SALT_BYTES = 16
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
 GENERIC_ERROR = "Identifiant ou mot de passe incorrect."
 LOCKED_ERROR = "Trop de tentatives. Réessayez dans quelques minutes."
+
+# Mots de passe très courants refusés même s'ils respectent la politique (V12).
+COMMON_PASSWORDS = {
+    "password1", "password123", "passw0rd", "motdepasse1", "motdepasse123", "azerty123", "azerty1234",
+    "azertyuiop1", "qwerty123", "qwerty1234", "abc12345", "abcd1234", "admin123", "admin1234",
+    "administrateur1", "bonjour123", "soleil123", "welcome1", "welcome123", "letmein1", "iloveyou1",
+    "123456789a", "a123456789", "1q2w3e4r", "1qaz2wsx", "zaq12wsx", "changeme1", "test1234",
+    "dashboard1", "meteo2026", "paris2024", "football1", "doudou123", "loulou123", "nicolas1",
+}
 
 
 # --------------------------------------------------------------------- Hachage
@@ -75,7 +85,65 @@ def validate_password(password: str) -> Optional[str]:
         return "Le mot de passe ne doit pas dépasser 128 caractères."
     if not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
         return "Le mot de passe doit contenir au moins une lettre et un chiffre."
+    if password.lower() in COMMON_PASSWORDS:
+        return "Ce mot de passe est trop courant : choisissez-en un autre."
     return None
+
+
+# --------------------------------------------------------------------- Journal de sécurité (V8)
+_sec_logger = logging.getLogger("security")
+
+
+def _sanitize(value: Any) -> str:
+    """Neutralise les retours à la ligne / tabulations (anti-injection dans le journal)."""
+    return re.sub(r"[\r\n\t]", "_", str(value))[:100]
+
+
+def security_event(event: str, username: str = "-", ip: str = "-", **extra: Any) -> None:
+    """Écrit un événement de sécurité (jamais de mot de passe) dans data/security.log."""
+    if not _sec_logger.handlers:
+        config.SECURITY_LOG.parent.mkdir(parents=True, exist_ok=True)
+        handler = logging.FileHandler(config.SECURITY_LOG, encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+        _sec_logger.addHandler(handler)
+        _sec_logger.setLevel(logging.INFO)
+        _sec_logger.propagate = False
+    details = " ".join(f"{k}={_sanitize(v)}" for k, v in extra.items())
+    _sec_logger.info("%s user=%s ip=%s %s", event, _sanitize(username), _sanitize(ip), details)
+
+
+# --------------------------------------------------------------------- Limite par IP (V7)
+class IPRateLimiter:
+    """Bloque une adresse IP après trop d'échecs sur une fenêtre glissante (password spraying)."""
+
+    def __init__(self, max_failures: int = config.IP_MAX_FAILURES,
+                 window_minutes: int = config.IP_WINDOW_MINUTES) -> None:
+        self.max_failures = max_failures
+        self.window = window_minutes * 60
+        self._failures: Dict[str, Deque[float]] = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    def _purge(self, ip: str, now: float) -> Deque[float]:
+        q = self._failures[ip]
+        while q and now - q[0] > self.window:
+            q.popleft()
+        return q
+
+    def is_blocked(self, ip: str) -> bool:
+        """True si l'IP a atteint le nombre maximal d'échecs dans la fenêtre."""
+        with self._lock:
+            return len(self._purge(ip, time.time())) >= self.max_failures
+
+    def record_failure(self, ip: str) -> None:
+        """Enregistre un échec de connexion pour cette IP."""
+        with self._lock:
+            now = time.time()
+            self._purge(ip, now).append(now)
+
+    def reset(self, ip: str) -> None:
+        """Efface les échecs d'une IP (après une connexion réussie)."""
+        with self._lock:
+            self._failures.pop(ip, None)
 
 
 # --------------------------------------------------------------------- Stockage
@@ -95,10 +163,12 @@ class UserStore:
 
     def __init__(self, path: Path | str | None = None,
                  max_failed: int = config.MAX_FAILED_ATTEMPTS,
-                 lockout_minutes: int = config.LOCKOUT_MINUTES) -> None:
+                 lockout_minutes: int = config.LOCKOUT_MINUTES,
+                 ip_limiter: Optional[IPRateLimiter] = None) -> None:
         self.path = Path(path or config.USERS_FILE)
         self.max_failed = max_failed
         self.lockout_seconds = lockout_minutes * 60
+        self.ip_limiter = ip_limiter or IPRateLimiter()
 
     # -- fichier
     def _load(self) -> Dict[str, Dict[str, Any]]:
@@ -121,7 +191,7 @@ class UserStore:
         """Indique si au moins un compte existe."""
         return bool(self._load())
 
-    def add_user(self, username: str, password: str) -> None:
+    def add_user(self, username: str, password: str, ip: str = "cli") -> None:
         """Crée un compte ; lève ValueError si l'identifiant ou le mot de passe est refusé."""
         err = validate_username(username) or validate_password(password)
         if err:
@@ -135,6 +205,7 @@ class UserStore:
                           "created": dt.datetime.now().isoformat(timespec="seconds")}
             self._save(users)
         logger.info("Compte créé : %s", key)
+        security_event("ACCOUNT_CREATED", key, ip)
 
     def delete_user(self, username: str) -> bool:
         """Supprime un compte ; renvoie True s'il existait."""
@@ -145,32 +216,42 @@ class UserStore:
                 self._save(users)
         return existed
 
-    def authenticate(self, username: str, password: str) -> AuthResult:
-        """Vérifie identifiant + mot de passe, avec verrouillage après trop d'échecs.
+    def authenticate(self, username: str, password: str, ip: str = "-") -> AuthResult:
+        """Vérifie identifiant + mot de passe, avec verrouillage du compte et limite par IP.
 
         Le message d'erreur est le même que le compte existe ou non (pas d'énumération).
         """
-        key = (username or "").strip().lower()
+        key = (username or "").strip().lower()[:64]
+        if self.ip_limiter.is_blocked(ip):
+            security_event("LOGIN_BLOCKED_IP", key, ip)
+            return AuthResult(False, LOCKED_ERROR)
         with self._lock:
             users = self._load()
             user = users.get(key)
             if user is None:
                 verify_password(password, _DUMMY_HASH)  # même durée qu'un vrai compte
+                self.ip_limiter.record_failure(ip)
+                security_event("LOGIN_FAILED", key, ip, reason="unknown_user")
                 return AuthResult(False, GENERIC_ERROR)
 
             now = time.time()
             if user.get("locked_until", 0) > now:
+                security_event("LOGIN_FAILED", key, ip, reason="account_locked")
                 return AuthResult(False, LOCKED_ERROR)
 
             if verify_password(password, user["hash"]):
                 user["failed"], user["locked_until"] = 0, 0
                 self._save(users)
+                self.ip_limiter.reset(ip)
+                security_event("LOGIN_SUCCESS", key, ip)
                 return AuthResult(True, "", key)
 
+            self.ip_limiter.record_failure(ip)
             user["failed"] = user.get("failed", 0) + 1
+            security_event("LOGIN_FAILED", key, ip, reason="bad_password", count=user["failed"])
             if user["failed"] >= self.max_failed:
                 user["failed"], user["locked_until"] = 0, now + self.lockout_seconds
-                logger.warning("Compte verrouillé après trop d'échecs : %s", key)
+                security_event("ACCOUNT_LOCKED", key, ip, minutes=self.lockout_seconds // 60)
             self._save(users)
             return AuthResult(False, GENERIC_ERROR)
 

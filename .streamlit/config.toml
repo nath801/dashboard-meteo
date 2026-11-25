@@ -1,0 +1,21 @@
+# Configuration durcie (audit de sécurité : V5, V9)
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+
+[client]
+showErrorDetails = "none"      # V9 : pas de trace Python affichée aux visiteurs
+toolbarMode = "minimal"
+
+[server]
+headless = true
+address = "127.0.0.1"          # V5 : joignable uniquement en local (Caddy fait le HTTPS)
+port = 8501
+allowedHosts = ["localhost", "127.0.0.1"]   # V5 : en-tête Host filtré
+enableCORS = true
+enableXsrfProtection = true
+xsrfCookieSameSite = "strict"
+maxUploadSize = 1
+enableStaticServing = false
